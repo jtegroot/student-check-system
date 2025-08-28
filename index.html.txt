@@ -1,0 +1,293 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Check Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 800px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+
+    <div class="container bg-white p-6 rounded-3xl shadow-lg border border-gray-200 w-full md:w-3/4 lg:w-2/3">
+
+
+        <!-- Header and User ID Display -->
+        <header class="mb-6 border-b pb-4">
+            <h1 class="text-3xl font-bold text-center text-gray-800">Student Check System</h1>
+            <p id="userIdDisplay" class="text-xs text-center text-gray-500 mt-2 break-all"></p>
+        </header>
+
+
+        <!-- Loading state -->
+        <div id="loading" class="text-center text-gray-500 mb-6">
+            <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-2">Loading...</p>
+        </div>
+
+
+        <!-- Add Student Form -->
+        <div id="mainContent" class="hidden">
+            <div class="mb-6 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-4">
+                <input id="newStudentName" type="text" placeholder="Enter student's name" class="flex-grow p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 shadow-sm">
+                <button id="addStudentBtn" class="bg-blue-600 text-white font-semibold py-3 px-6 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 w-full md:w-auto">Add Student</button>
+            </div>
+            
+            <!-- Student List -->
+            <ul id="studentList" class="space-y-4">
+                <!-- Students will be rendered here dynamically -->
+            </ul>
+        </div>
+
+
+        <!-- Notification Message Box -->
+        <div id="notificationBox" class="fixed inset-x-0 top-4 z-50 flex items-center justify-center hidden">
+            <div class="bg-gray-800 text-white px-6 py-3 rounded-full shadow-xl transition-all duration-300 transform scale-95 opacity-0">
+                <p id="notificationMessage"></p>
+            </div>
+        </div>
+
+
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, where, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+
+        // This object and variables are provided by the canvas environment. DO NOT change them.
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+
+        // --- Firebase Initialization and Authentication ---
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let userId = null;
+
+
+        /**
+         * Displays a temporary notification message on the screen.
+         * @param {string} message The message to display.
+         */
+        const showNotification = (message) => {
+            const box = document.getElementById('notificationBox');
+            const msg = document.getElementById('notificationMessage');
+            msg.textContent = message;
+            box.classList.remove('hidden');
+            box.querySelector('div').classList.remove('scale-95', 'opacity-0');
+            box.querySelector('div').classList.add('scale-100', 'opacity-100');
+
+
+            setTimeout(() => {
+                box.querySelector('div').classList.remove('scale-100', 'opacity-100');
+                box.querySelector('div').classList.add('scale-95', 'opacity-0');
+                setTimeout(() => box.classList.add('hidden'), 300);
+            }, 2000);
+        };
+
+
+        // Event listener for authentication state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                console.log("User authenticated. User ID:", userId);
+                document.getElementById('userIdDisplay').textContent = `User ID: ${userId}`;
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+
+
+                // Start listening for students after successful authentication
+                listenForStudents();
+            } else {
+                console.log("No user found. Signing in.");
+                try {
+                    // Sign in with the provided custom token if available, otherwise anonymously
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Error signing in:", error);
+                    document.getElementById('loading').innerHTML = `<p class="text-red-500">Error signing in. Please try again later.</p>`;
+                }
+            }
+        });
+
+
+        /**
+         * Renders the list of students to the UI.
+         * @param {Array<Object>} students An array of student objects from Firestore.
+         */
+        const renderStudents = (students) => {
+            const studentList = document.getElementById('studentList');
+            studentList.innerHTML = '';
+            students.sort((a, b) => a.name.localeCompare(b.name)); // Sort students alphabetically by name
+            students.forEach(student => {
+                const li = document.createElement('li');
+                li.className = 'flex items-center justify-between bg-gray-50 p-4 rounded-xl shadow-sm border border-gray-200';
+                li.innerHTML = `
+                    <div class="flex-grow flex items-center space-x-4">
+                        <span class="font-medium text-gray-800 text-lg">${student.name}</span>
+                        <span class="text-xl font-bold text-blue-600">${student.checks}</span>
+                    </div>
+                    <div class="flex space-x-2 ml-4">
+                        <button class="give-check-btn bg-blue-500 text-white py-2 px-4 rounded-full font-semibold text-sm hover:bg-blue-600 transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            Give Check
+                        </button>
+                        <button class="reset-check-btn bg-red-500 text-white py-2 px-4 rounded-full font-semibold text-sm hover:bg-red-600 transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                            Reset
+                        </button>
+                    </div>
+                `;
+                // Add click listeners to the buttons for each student
+                li.querySelector('.give-check-btn').addEventListener('click', () => giveCheck(student.id, student.checks));
+                li.querySelector('.reset-check-btn').addEventListener('click', () => resetChecks(student.id));
+                studentList.appendChild(li);
+            });
+        };
+
+
+        /**
+         * Adds a new student to the Firestore database.
+         * @param {string} name The name of the new student.
+         */
+        const addStudent = async (name) => {
+            if (!userId) {
+                showNotification("Please wait, the app is still loading.");
+                return;
+            }
+            if (!name.trim()) {
+                showNotification("Student name cannot be empty.");
+                return;
+            }
+            try {
+                // Check if student already exists to prevent duplicates
+                const studentsRef = collection(db, `artifacts/${appId}/users/${userId}/students`);
+                const q = query(studentsRef, where("name", "==", name));
+                const querySnapshot = await getDocs(q);
+
+
+                if (querySnapshot.docs.length > 0) {
+                    showNotification("A student with this name already exists.");
+                    return;
+                }
+
+
+                await addDoc(studentsRef, {
+                    name: name.trim(),
+                    checks: 0
+                });
+                document.getElementById('newStudentName').value = '';
+                showNotification("Student added successfully!");
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                showNotification("Error adding student. Please try again.");
+            }
+        };
+
+
+        /**
+         * Increments the check count for a student in Firestore.
+         * @param {string} studentId The ID of the student's document.
+         * @param {number} currentChecks The current number of checks.
+         */
+        const giveCheck = async (studentId, currentChecks) => {
+            if (!userId) {
+                showNotification("Please wait, the app is still loading.");
+                return;
+            }
+            const studentRef = doc(db, `artifacts/${appId}/users/${userId}/students`, studentId);
+            try {
+                await updateDoc(studentRef, {
+                    checks: currentChecks + 1
+                });
+                showNotification("Check added!");
+            } catch (e) {
+                console.error("Error updating document: ", e);
+                showNotification("Error giving check. Please try again.");
+            }
+        };
+
+
+        /**
+         * Resets the check count for a student to zero.
+         * @param {string} studentId The ID of the student's document.
+         */
+        const resetChecks = async (studentId) => {
+            if (!userId) {
+                showNotification("Please wait, the app is still loading.");
+                return;
+            }
+            const studentRef = doc(db, `artifacts/${appId}/users/${userId}/students`, studentId);
+            try {
+                await updateDoc(studentRef, {
+                    checks: 0
+                });
+                showNotification("Checks reset!");
+            } catch (e) {
+                console.error("Error resetting checks: ", e);
+                showNotification("Error resetting checks. Please try again.");
+            }
+        };
+
+
+        /**
+         * Sets up a real-time listener for the students collection.
+         */
+        const listenForStudents = () => {
+            if (!userId) {
+                console.log("listenForStudents called but userId is not ready. Returning.");
+                return; // Ensure userId is available before setting up listener
+            }
+            console.log("Setting up listener for user ID:", userId);
+            const studentsRef = collection(db, `artifacts/${appId}/users/${userId}/students`);
+            onSnapshot(studentsRef, (snapshot) => {
+                const students = [];
+                snapshot.forEach(doc => {
+                    students.push({ id: doc.id, ...doc.data() });
+                });
+                renderStudents(students);
+            }, (error) => {
+                console.error("Error listening for students:", error);
+                showNotification("Error loading student data.");
+            });
+        };
+
+
+        // --- Event Listeners for the UI ---
+        document.getElementById('addStudentBtn').addEventListener('click', () => {
+            const name = document.getElementById('newStudentName').value;
+            addStudent(name);
+        });
+
+
+        document.getElementById('newStudentName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const name = document.getElementById('newStudentName').value;
+                addStudent(name);
+            }
+        });
+
+
+    </script>
+</body>
+</html>
