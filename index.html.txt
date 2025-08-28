@@ -62,10 +62,20 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, where, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // This object and variables are provided by the canvas environment. DO NOT change them.
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // IMPORTANT: The following variables are placeholders.
+        // You MUST replace them with your own Firebase project configuration from your Firebase console.
+        // To find your configuration, go to your Firebase project, click the gear icon next to "Project overview,"
+        // select "Project settings," and copy the `firebaseConfig` object from the "Your apps" section.
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        const appId = "YOUR_APP_ID_FOR_DATABASE_PATH";
+        const initialAuthToken = null; // No custom token needed for GitHub Pages
 
         // --- Firebase Initialization and Authentication ---
         const app = initializeApp(firebaseConfig);
@@ -105,11 +115,8 @@
             } else {
                 console.log("No user found. Signing in.");
                 try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
+                    // Sign in anonymously since a custom token is not used for this version
+                    await signInAnonymously(auth);
                 } catch (error) {
                     console.error("Error signing in:", error);
                     document.getElementById('loading').innerHTML = `<p class="text-red-500">Error signing in. Please try again later.</p>`;
@@ -164,7 +171,7 @@
             }
             try {
                 // Check if student already exists to prevent duplicates
-                const studentsRef = collection(db, `artifacts/${appId}/users/${userId}/students`);
+                const studentsRef = collection(db, `users/${userId}/students`);
                 const q = query(studentsRef, where("name", "==", name));
                 const querySnapshot = await getDocs(q);
 
@@ -195,7 +202,7 @@
                 showNotification("Please wait, the app is still loading.");
                 return;
             }
-            const studentRef = doc(db, `artifacts/${appId}/users/${userId}/students`, studentId);
+            const studentRef = doc(db, `users/${userId}/students`, studentId);
             try {
                 await updateDoc(studentRef, {
                     checks: currentChecks + 1
@@ -216,7 +223,7 @@
                 showNotification("Please wait, the app is still loading.");
                 return;
             }
-            const studentRef = doc(db, `artifacts/${appId}/users/${userId}/students`, studentId);
+            const studentRef = doc(db, `users/${userId}/students`, studentId);
             try {
                 await updateDoc(studentRef, {
                     checks: 0
@@ -237,7 +244,7 @@
                 return; // Ensure userId is available before setting up listener
             }
             console.log("Setting up listener for user ID:", userId);
-            const studentsRef = collection(db, `artifacts/${appId}/users/${userId}/students`);
+            const studentsRef = collection(db, `users/${userId}/students`);
             onSnapshot(studentsRef, (snapshot) => {
                 const students = [];
                 snapshot.forEach(doc => {
@@ -266,3 +273,7 @@
     </script>
 </body>
 </html>
+
+</body>
+</html>
+
